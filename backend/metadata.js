@@ -35,17 +35,25 @@ function scriptDownloadPath(html) {
     return found;
 }
 
-function buttonDownloadPath($) {
-    const links = $('a.addDownloadedBook[href]').toArray();
-    const usable = links.map(el => ({
-        href: $(el).attr('href') || '',
-        text: $(el).text() || ''
-    })).filter(item => item.href.startsWith('/dl/') || item.href.startsWith('/file/'));
-    const epub = usable.find(item => /epub/i.test(item.text));
-    return (epub || usable[0] || {}).href || '';
+function formatName(value) {
+    const match = String(value || '').trim().toLowerCase().match(/^(epub|pdf|mobi|azw3|azw|djvu|fb2|txt|rtf|cbz|cbr)\b/);
+    return match ? match[1] : '';
 }
 
-function parseMetadata(html) {
+function buttonDownloadPath($, format) {
+    const links = $('a.addDownloadedBook[href]').toArray().map(el => {
+        const text = ($(el).text() || '').replace(/\s+/g, ' ').trim();
+        return { href: $(el).attr('href') || '', text, format: formatName(text) };
+    }).filter(item => item.href.startsWith('/dl/') || item.href.startsWith('/file/'));
+    const wanted = formatName(format);
+    if (wanted) {
+        const match = links.find(item => item.format === wanted);
+        return match ? match.href : '';
+    }
+    return links.length === 1 ? links[0].href : '';
+}
+
+function parseMetadata(html, format) {
     const $ = cheerio.load(html);
     const cleanText = node => {
         const copy = node.clone();
@@ -72,9 +80,15 @@ function parseMetadata(html) {
         img: absolute($(element).find('img').attr('src')),
         name: $(element).find('img').attr('alt') || $(element).find('a').attr('title') || 'Related book',
     })).filter(book => book.url);
-    // Empty <a href="/dl/..."> anchors are decoys (HTTP 204). The file link is the
-    // addDownloadedBook control. An obfuscated script path is only a fallback.
-    let dlUrl = buttonDownloadPath($) || scriptDownloadPath(html) || '';
+    // Unlabeled /dl/ anchors are decoys (HTTP 204). The file is the addDownloadedBook
+    // control whose label is the format on this page, or the format the caller asked for.
+    const fileValue = $('.bookProperty').toArray().map(element => {
+        const label = cleanText($(element).children('.property_label').first());
+        return /^file:?$/i.test(label) ? cleanText($(element).children('.property_value').first()) : '';
+    }).find(Boolean) || '';
+    const wanted = formatName(format) || formatName(fileValue);
+    let dlUrl = buttonDownloadPath($, wanted);
+    if (!dlUrl && !wanted) dlUrl = scriptDownloadPath(html) || '';
     if (dlUrl === '#') dlUrl = '';
     return { name, author, img: absolute(img), dlUrl, similars,
         description: facts.join(' | ') + (description ? '<hr><p>' + escapeHtml(description) + '</p>' : '') };
@@ -92,7 +106,7 @@ module.exports = async function (args, socket) {
             html = await response.text();
             cache.remember(pathname, html);
         }
-        const detail = parseMetadata(html);
+        const detail = parseMetadata(html, args[1] || '');
         // Related covers must not bypass the shelf filter or delay opening details.
         detail.similars = detail.similars.filter(require('./list').approvedCached);
         socket.write(JSON.stringify(detail) + '\n');
@@ -104,3 +118,4 @@ module.exports = async function (args, socket) {
 module.exports.parseMetadata = parseMetadata;
 module.exports.scriptDownloadPath = scriptDownloadPath;
 module.exports.buttonDownloadPath = buttonDownloadPath;
+module.exports.formatName = formatName;

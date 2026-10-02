@@ -52,3 +52,16 @@ test('download link is the addDownloadedBook control, not the first decoy /dl/ a
       <a href="/dl/otherdecoy"></a>`);
     assert.equal(result.dlUrl, '/dl/realepub');
 });
+
+test('pdf and epub buttons stay tied to the format that was picked', () => {
+    const html = `<h1>Example</h1><i class="authors">Anon</i>
+      <div class="bookProperty"><div class="property_label">File:</div><div class="property_value">PDF, 1.19 MB</div></div>
+      <a href="/dl/decoy204"></a>
+      <a class="btn btn-default dlButton addDownloadedBook" href="/dl/epubfile">epub, 400 KB</a>
+      <a class="btn btn-default dlButton addDownloadedBook" href="/dl/pdffile">pdf, 1.19 MB</a>`;
+    const api = load();
+    assert.equal(api.parseMetadata(html).dlUrl, '/dl/pdffile');
+    assert.equal(api.parseMetadata(html, 'pdf').dlUrl, '/dl/pdffile');
+    assert.equal(api.parseMetadata(html, 'epub').dlUrl, '/dl/epubfile');
+    assert.equal(api.parseMetadata(html, 'mobi').dlUrl, '');
+});
