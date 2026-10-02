@@ -43,3 +43,12 @@ test('opening cached details reuses the fetched page without a second network re
     }
     assert.equal(calls, 1);
 });
+
+test('download link is the addDownloadedBook control, not the first decoy /dl/ anchor', () => {
+    const result = load().parseMetadata(`<h1>Pride and Prejudice</h1><i class="authors">Jane Austen</i>
+      <a href="/dl/decoy204"></a>
+      <a class="btn btn-primary dlButton reader-link" href="https://reader.example/read">Read Online</a>
+      <a class="btn btn-default dlButton addDownloadedBook" href="/dl/realepub">epub, 641 KB</a>
+      <a href="/dl/otherdecoy"></a>`);
+    assert.equal(result.dlUrl, '/dl/realepub');
+});

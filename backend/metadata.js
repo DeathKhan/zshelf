@@ -35,6 +35,16 @@ function scriptDownloadPath(html) {
     return found;
 }
 
+function buttonDownloadPath($) {
+    const links = $('a.addDownloadedBook[href]').toArray();
+    const usable = links.map(el => ({
+        href: $(el).attr('href') || '',
+        text: $(el).text() || ''
+    })).filter(item => item.href.startsWith('/dl/') || item.href.startsWith('/file/'));
+    const epub = usable.find(item => /epub/i.test(item.text));
+    return (epub || usable[0] || {}).href || '';
+}
+
 function parseMetadata(html) {
     const $ = cheerio.load(html);
     const cleanText = node => {
@@ -62,7 +72,9 @@ function parseMetadata(html) {
         img: absolute($(element).find('img').attr('src')),
         name: $(element).find('img').attr('alt') || $(element).find('a').attr('title') || 'Related book',
     })).filter(book => book.url);
-    let dlUrl = scriptDownloadPath(html) || $('a[href^="/dl/"]').first().attr('href') || $('.dlButton').attr('href') || '';
+    // Empty <a href="/dl/..."> anchors are decoys (HTTP 204). The file link is the
+    // addDownloadedBook control. An obfuscated script path is only a fallback.
+    let dlUrl = buttonDownloadPath($) || scriptDownloadPath(html) || '';
     if (dlUrl === '#') dlUrl = '';
     return { name, author, img: absolute(img), dlUrl, similars,
         description: facts.join(' | ') + (description ? '<hr><p>' + escapeHtml(description) + '</p>' : '') };
@@ -91,3 +103,4 @@ module.exports = async function (args, socket) {
 };
 module.exports.parseMetadata = parseMetadata;
 module.exports.scriptDownloadPath = scriptDownloadPath;
+module.exports.buttonDownloadPath = buttonDownloadPath;
