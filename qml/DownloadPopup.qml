@@ -14,8 +14,15 @@ Popup {
     leftPadding: 20; rightPadding: 20
     topPadding: 5; bottomPadding: 5
 
-    closePolicy: Popup.CloseOnPressOutside
-    dim: true
+    modal: true
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    // No full-window dim. A dim repaints 1404x1872, and damageFrom merges
+    // more than 16 rects into one bounding box, so the partial update covers
+    // the panel. bump() presents only the pixels that actually changed
+    // (UPDATE_PARTIAL). With no dim, that region is the popup.
+    onOpened: if (typeof panel !== "undefined") panel.bump()
+    onClosed: if (typeof panel !== "undefined") panel.bump()
+    dim: false
     Overlay.modeless: Rectangle {
         color: "transparent"
         MouseArea {
@@ -63,8 +70,7 @@ Popup {
 
     ListView {
         id: listView
-        width: 500 - parent.padding * 2
-        anchors.fill: parent
+                anchors.fill: parent
         model: store.downloadList
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -89,7 +95,7 @@ Popup {
                     text: model.modelData.name
                     font.family: Theme.fontFamilyContent
                     font.pixelSize: Theme.fontSizeTiny
-                    width: 350
+                    width: parent.width * 0.55
                     maximumLineCount: 2
                     wrapMode: Text.Wrap
                     anchors.verticalCenter: parent.verticalCenter
@@ -97,8 +103,7 @@ Popup {
                 }
                 Text {
                     id: downloadStatusText
-                    visible: model.modelData.status === "Downloaded" ||
-                        model.modelData.status.endsWith("%")
+                    visible: model.modelData.status.length > 0
                     text: model.modelData.status === "Downloaded" ? "↓  " : model.modelData.status
                     color: Theme.colorText
                     anchors.right: parent.right
@@ -107,7 +112,7 @@ Popup {
                     verticalAlignment: Text.AlignVCenter
                     font.family: Theme.fontFamily
                     font.styleName: "Bold"
-                    font.pixelSize: 30
+                    font.pixelSize: 22
                 }
                 Rectangle {
                     color: Theme.colorMuted
@@ -118,7 +123,7 @@ Popup {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        model.modelData.getDetail(itemInfo);
+                        model.modelData.getDetail();
                         itemInfo.model = model.modelData;
                         downloadPopup.close();
                         itemInfo.open();

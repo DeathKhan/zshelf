@@ -3,35 +3,31 @@ import QtQuick.Controls 2.4
 import "Theme.js" as Theme
 
 Item {
-    id: loginUI
-    objectName: "loginScreen"
+    id: settingsUI
+    objectName: "settingsScreen"
     property variant storeFront
     visible: false
 
-    function openLogin(open) {
+    function openSettings(open) {
         visible = open
         statusText.text = ""
+        if (open && storeFront) {
+            urlInput.text = storeFront.sourceUrl
+            dirInput.text = storeFront.downloadDir
+            urlInput.forceActiveFocus()
+        }
         if (typeof panel !== "undefined") panel.flash()
-        if (open)
-            emailInput.forceActiveFocus()
     }
 
-    function submit() {
-        statusText.text = "Signing in..."
-        storeFront.signIn(emailInput.text, passwordInput.text)
-    }
-
-    Connections {
-        target: storeFront
-        function onLoginFinished(ok, message) {
-            if (ok) {
-                passwordInput.text = ""
-                statusText.text = "Signed in"
-                loginUI.openLogin(false)
-            } else {
-                passwordInput.text = ""
-                statusText.text = message
-            }
+    function save() {
+        if (!storeFront) return
+        var ok = storeFront.saveLibrarySettings(urlInput.text, dirInput.text)
+        if (ok) {
+            urlInput.text = storeFront.sourceUrl
+            dirInput.text = storeFront.downloadDir
+            statusText.text = "Saved"
+        } else {
+            statusText.text = "Could not save. Use a full http or https URL."
         }
     }
 
@@ -43,7 +39,7 @@ Item {
 
     Text {
         id: heading
-        text: "Sign in"
+        text: "Settings"
         font.family: Theme.fontFamily
         font.bold: true
         font.pixelSize: Theme.fontSizeTitle
@@ -54,75 +50,85 @@ Item {
     }
 
     Text {
-        id: hint
-        text: "Uses your Z-Library account. The password is not saved."
+        id: urlLabel
+        text: "Z-Library source URL"
         font.family: Theme.fontFamilyContent
         font.pixelSize: Theme.fontSizeSmall
         color: Theme.colorText
-        wrapMode: Text.WordWrap
-        width: parent.width - Theme.margin * 2
         anchors.left: parent.left
         anchors.top: heading.bottom
         anchors.margins: Theme.margin
-        anchors.topMargin: 10
+        anchors.topMargin: 16
     }
 
     Rectangle {
-        id: emailBox
+        id: urlBox
         color: Theme.colorPrimary
         height: 90
         anchors {
             left: parent.left
             right: parent.right
-            top: hint.bottom
-            margins: Theme.margin
-            topMargin: 20
-        }
-        TextField {
-            id: emailInput
-            objectName: "emailInput"
-            anchors.fill: parent
-            anchors.leftMargin: 20
-            anchors.rightMargin: 20
-            font.pixelSize: Theme.fontSizeBody
-            font.family: Theme.fontFamilyContent
-            color: Theme.colorTextInverse
-            placeholderText: "Email"
-            placeholderTextColor: "#cccccc"
-            inputMethodHints: Qt.ImhEmailCharactersOnly
-            verticalAlignment: Text.AlignVCenter
-            background: Rectangle { color: Theme.colorPrimary }
-            onActiveFocusChanged: if (activeFocus) keyboard.target = emailInput
-        }
-    }
-
-    Rectangle {
-        id: passwordBox
-        color: Theme.colorPrimary
-        height: 90
-        anchors {
-            left: parent.left
-            right: parent.right
-            top: emailBox.bottom
+            top: urlLabel.bottom
             leftMargin: Theme.margin
             rightMargin: Theme.margin
-            topMargin: 16
+            topMargin: 8
         }
         TextField {
-            id: passwordInput
-            objectName: "passwordInput"
+            id: urlInput
+            objectName: "sourceUrlInput"
             anchors.fill: parent
             anchors.leftMargin: 20
             anchors.rightMargin: 20
             font.pixelSize: Theme.fontSizeBody
             font.family: Theme.fontFamilyContent
             color: Theme.colorTextInverse
-            placeholderText: "Password"
+            placeholderText: "https://zlib.bz"
             placeholderTextColor: "#cccccc"
-            echoMode: TextInput.Password
+            inputMethodHints: Qt.ImhUrlCharactersOnly
             verticalAlignment: Text.AlignVCenter
             background: Rectangle { color: Theme.colorPrimary }
-            onActiveFocusChanged: if (activeFocus) keyboard.target = passwordInput
+            onActiveFocusChanged: if (activeFocus) keyboard.target = urlInput
+        }
+    }
+
+    Text {
+        id: dirLabel
+        text: "Download folder"
+        font.family: Theme.fontFamilyContent
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.colorText
+        anchors.left: parent.left
+        anchors.top: urlBox.bottom
+        anchors.leftMargin: Theme.margin
+        anchors.topMargin: 16
+    }
+
+    Rectangle {
+        id: dirBox
+        color: Theme.colorPrimary
+        height: 90
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: dirLabel.bottom
+            leftMargin: Theme.margin
+            rightMargin: Theme.margin
+            topMargin: 8
+        }
+        TextField {
+            id: dirInput
+            objectName: "downloadDirInput"
+            anchors.fill: parent
+            anchors.leftMargin: 20
+            anchors.rightMargin: 20
+            font.pixelSize: Theme.fontSizeBody
+            font.family: Theme.fontFamilyContent
+            color: Theme.colorTextInverse
+            placeholderText: "/home/root/Books"
+            placeholderTextColor: "#cccccc"
+            verticalAlignment: Text.AlignVCenter
+            background: Rectangle { color: Theme.colorPrimary }
+            onActiveFocusChanged: if (activeFocus) keyboard.target = dirInput
         }
     }
 
@@ -130,7 +136,7 @@ Item {
         id: statusText
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: passwordBox.bottom
+        anchors.top: dirBox.bottom
         anchors.margins: Theme.margin
         font.family: Theme.fontFamilyContent
         font.pixelSize: Theme.fontSizeSmall
@@ -139,7 +145,7 @@ Item {
     }
 
     Rectangle {
-        id: submitButton
+        id: saveButton
         width: 220
         height: Math.max(Theme.minTouchSize, 70)
         radius: Theme.radiusCard
@@ -151,17 +157,14 @@ Item {
             topMargin: 10
         }
         Text {
-            text: "Sign in"
+            text: "Save"
             color: Theme.colorTextInverse
             font.family: Theme.fontFamily
             font.styleName: "Bold"
             font.pixelSize: Theme.fontSizeBody
             anchors.centerIn: parent
         }
-        MouseArea {
-            anchors.fill: parent
-            onClicked: submit()
-        }
+        MouseArea { anchors.fill: parent; onClicked: save() }
     }
 
     Rectangle {
@@ -172,8 +175,8 @@ Item {
         border.color: Theme.colorPrimary
         border.width: Theme.borderWidth
         anchors {
-            left: submitButton.right
-            top: submitButton.top
+            left: saveButton.right
+            top: saveButton.top
             leftMargin: 20
         }
         Text {
@@ -184,23 +187,16 @@ Item {
             font.pixelSize: Theme.fontSizeBody
             anchors.centerIn: parent
         }
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                passwordInput.text = ""
-                loginUI.openLogin(false)
-            }
-        }
+        MouseArea { anchors.fill: parent; onClicked: settingsUI.openSettings(false) }
     }
 
     SearchKeyboard {
         id: keyboard
-        objectName: "loginKeyboard"
+        objectName: "settingsKeyboard"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: Math.min(520, parent.height * 0.36)
-        target: emailInput
-        actionText: "Sign in"
-        onSubmitted: submit()
+        target: urlInput
+        actionText: "Save"
+        onSubmitted: save()
     }
-
 }

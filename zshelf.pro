@@ -1,20 +1,9 @@
 TEMPLATE = app
-QT += quick network
+QT += quick network concurrent gui-private
+LIBS += -ldl -lrt
 CONFIG += c++11
-# qsgepaper is the reMarkable e-paper plugin.
-# On device it is a shared library. In the Toltec v3 SDK it is a static
-# archive inside the sysroot, which exists() on the host paths will not see.
-exists(/usr/lib/libqsgepaper.so): QSG_EPAPER = 1
-exists(/usr/lib/libqsgepaper-rm2.so): QSG_EPAPER = 1
-exists(/opt/lib/libqsgepaper.so): QSG_EPAPER = 1
-exists($$[QT_SYSROOT]/usr/lib/libqsgepaper.a): QSG_EPAPER = 1
-exists($$[QT_SYSROOT]/usr/lib/libqsgepaper.so): QSG_EPAPER = 1
-!isEmpty(QSG_EPAPER) {
-    LIBS += -lqsgepaper
-    message(Linking libqsgepaper)
-} else {
-    message(Building with qsgepaper stub - host binary only; for device use the Toltec Qt v3 image)
-}
+# OS 3.28 ships Qt 6. This binary is a native qtfb client (see qtfbclient.cpp).
+# Do not link libqsgepaper and do not preload qtfb-shim.so.
 
 TARGET = zshelf
 
@@ -30,17 +19,19 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES = main.cpp \
-    store.cpp
-isEmpty(QSG_EPAPER): SOURCES += qsgepaper_stub.cpp
-
+    store.cpp \
+    qtfbclient.cpp \
+    qtfbplatform.cpp
 HEADERS = \
     worker.h \
     store.h \
-    grayImage.h
+    grayImage.h \
+    panel.h \
+    qtfbclient.h \
+    qtfbplatform.h
 
 RESOURCES += qml.qrc
 
-include(quickvirtualkeyboard/components.pri)
 
 DEPLOYMENT_PATH = /usr/share/$$TARGET
 DEFINES += DEPLOYMENT_PATH=\\\"$$DEPLOYMENT_PATH\\\"

@@ -1,8 +1,6 @@
 import QtQuick 2.5
 import QtQuick.Controls 2.4
 import QtQuick.Layouts 1.0
-import QuickKeyboard 1.0
-import "modes"
 import "Theme.js" as Theme
 
 Item {
@@ -10,12 +8,15 @@ Item {
     property bool firstOpen: true;
 
     id: searchUI
+    objectName: "searchScreen"
     visible: false
 
     function openSearch(open) {
         if (open) {
             searchUI.visible = true
-            keyboard.dispatcher.setFocusObject(textInput);
+            textInput.forceActiveFocus();
+            keyboard.reset();
+            if (typeof panel !== "undefined") panel.flash()
             if (firstOpen) {
                 firstOpen = false;
                 fromYear.setDefault(storeFront.fromYear);
@@ -30,11 +31,12 @@ Item {
             }
         } else {
             searchUI.visible = false;
+            if (typeof panel !== "undefined") panel.flash()
         }
     }
 
     function getParams() {
-        storeFront.exactMatch = exactMatch.position;
+        storeFront.exactMatch = exactMatch.checked ? "1" : "0";
         storeFront.fromYear = fromYear.value();
         storeFront.toYear = toYear.value();
         storeFront.language = language.value();
@@ -45,6 +47,7 @@ Item {
 
     function sendQuery() {
         getParams();
+        openSearch(false);
         storeFront.newQuery(0);
     }
 
@@ -78,6 +81,8 @@ Item {
 
         TextField  {
             id: textInput
+            objectName: "searchInput"
+            onAccepted: sendQuery()
             font.pixelSize: 35
             color: Theme.colorTextInverse
             font.family: Theme.fontFamilyContent
@@ -86,7 +91,8 @@ Item {
             verticalAlignment: Text.AlignVCenter
             anchors.leftMargin: 120
             anchors.rightMargin: Theme.margin + 150
-            placeholderText: "Search for title, author, ISBN, publisher, md5..."
+            placeholderText: "Title, author or ISBN"
+            placeholderTextColor: "#cccccc"
             background: Rectangle {
                 anchors.fill: parent
                 color: Theme.colorPrimary
@@ -106,7 +112,6 @@ Item {
                 verticalCenter: parent.verticalCenter
                 rightMargin: Theme.margin
             }
-            Accessible.name: "Clear search"
             Text {
                 text: "Clear"
                 font.pixelSize: Theme.fontSizeBody
@@ -123,14 +128,16 @@ Item {
         }
     }
 
-    Row {
+    RowLayout {
         anchors {
             left: parent.left
             leftMargin: Theme.margin
+            right: parent.right
+            rightMargin: Theme.margin
             top: searchBox.bottom
             topMargin: 30
         }
-        spacing: 33
+        spacing: 20
 
         Filter {
             id: fromYear
@@ -143,9 +150,10 @@ Item {
                 }
                 return a;
             }
-            width: 150
+            Layout.fillWidth: true
+            Layout.preferredWidth: 150
             text: "From"
-            onActivated: {
+            onActivated: function(index) {
                 let oldIndex = toYear.curIndex;
                 toYear.model = index > 0 ? fromYear.model.slice(0, index + 1) : fromYear.model;
                 if (oldIndex <= index) {
@@ -160,28 +168,32 @@ Item {
             id: toYear
             model: fromYear.model
             text: "To"
-            width: 150
+            Layout.fillWidth: true
+            Layout.preferredWidth: 150
         }
 
         Filter {
             id: language
             model: ["Any","Afrikaans","Albanian","Arabic","Armenian","Azerbaijani","Bashkir","Belarusian","Bengali","Berber","Bulgarian","Catalan","Chinese","Crimean Tatar","Croatian","Czech","Danish","Dutch","English","Esperanto","Finnish","French","Georgian","German","Greek","Gujarati","Hebrew","Hindi","Hungarian","Icelandic","Indigenous","Indonesian","Italian","Japanese","Kannada","Kazakh","Kirghiz","Korean","Latin","Latvian","Lithuanian","Malayalam","Marathi","Mongolian","Nepali","Norwegian","Odia","Persian","Polish","Portuguese","Romanian","Russian","Sanskrit","Serbian","Sinhala","Slovak","Slovenian","Somali","Spanish","Swahili","Swedish","Tajik","Tamil","Tatar","Telugu","Turkish","Ukrainian","Urdu","Uzbek","Vietnamese"]
             text: "Language"
-            width: 350
+            Layout.fillWidth: true
+            Layout.preferredWidth: 350
         }
 
         Filter {
             id: extension
             model: ["Any","EPUB","PDF","AZW","AZW3","FB2","MOBI","DJVU","DJV","TXT","RTF","LIT","CBZ"]
             text: "Extension"
-            width: 200
+            Layout.fillWidth: true
+            Layout.preferredWidth: 200
         }
 
         Filter {
             id: order
             model: [ "Most Popular", "Best Match", "Recently added", "By Title (A-Z)", "By Title (Z-A)", "By Year", "File Size Asc.", "File Size Des." ]
             text: "Sort by"
-            width: 350
+            Layout.fillWidth: true
+            Layout.preferredWidth: 350
         }
     }
 
@@ -286,64 +298,35 @@ Item {
         }
     }
 
-    Keyboard {
+    SearchKeyboard {
         id: keyboard
+        objectName: "queryKeyboard"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: 626
-
-Rectangle {
-        anchors.fill: parent
-        color: Theme.colorPrimary
-    }
-
-        mode: standard
-
-        Standard {
-            id: standard
-            anchors.fill: parent
-            anchors.topMargin: 93
-            onSymbolsModeSwitched: keyboard.mode = symbols
-            onEnter: sendQuery()
-        }
-
-        Symbols {
-            id: symbols
-            anchors.fill: parent
-            anchors.topMargin: 93
-            onStandardModeSwitched: keyboard.mode = standard
-            onSymbolsModeSwitched: keyboard.mode = symbols2
-            onEnter: sendQuery()
-        }
-
-        Symbols2 {
-            id: symbols2
-            anchors.fill: parent
-            anchors.topMargin: 93
-            onStandardModeSwitched: keyboard.mode = standard
-            onSymbolsModeSwitched: keyboard.mode = symbols
-            onEnter: sendQuery()
-        }
+        height: Math.min(520, parent.height * 0.36)
+        target: textInput
+        actionText: "Search"
+        onSubmitted: sendQuery()
     }
 
     Rectangle {
         id: closeSearchUI
-        width: 80
+        width: 160
         height: 80
         radius: Theme.radiusButton
         color: Theme.colorPrimary
         anchors {
             right: parent.right
-            bottom: keyboard.top
-            margins: Theme.margin
+            top: searchBox.bottom
+            topMargin: 400
+            rightMargin: Theme.margin
         }
-        Accessible.name: "Close search"
         Text {
-            text: "v"
+            text: "Close"
             font.family: Theme.fontFamily
             font.bold: true
             color: Theme.colorTextInverse
             anchors.centerIn: parent
-            font.pixelSize: Theme.fontSizeTitle
+            font.pixelSize: Theme.fontSizeBody
         }
         MouseArea {
             anchors.fill: parent
@@ -351,8 +334,4 @@ Rectangle {
         }
     }
 
-    Item {
-        id: keyboardOverlay
-        anchors.fill: keyboard
-    }
 }

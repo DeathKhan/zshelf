@@ -62,3 +62,47 @@ Thumbs.db
 /backend/node_modules/
 
 zshelf
+
+/downloads.ini
+/category-cache-v2.json
+/category-cache-v2.json.*.tmp
+
+.sdk/
+build-qt6/
+
+# Local session. Copy config.example.json to config.json.
+/config.json
+
+# Host Node helpers and fetched books. Not the device app.
+/node_modules/
+/package.json
+/package-lock.json
+*.epub
+/latin101_dir/
+/latin102_dir/
+/search_res.txt
+/chal.html
+/fix.js
+/fix_count.js
+/fix_koreader.sh
+/get_books.js
+/get_books2.js
+/lg_li.py
+/libgen_dl.py
+/libgen_rs.py
+/mac_get_books.js
+/main.cpp.qt5-before-native-port
+/main_head.qml
+/patch_*.js
+/patch_*.py
+/tablet_get*.js
+/test_*.js
+/test_*.html
+
+# Scraped pages and one-off backend scripts. live_*.html includes an address.
+/backend/tests/fixtures/live_book.html
+/backend/tests/fixtures/live_surface.html
+/backend/tests/benchmark-network.js
+/backend/tests/patch_*.js
+/backend/tests/test-*.js
+/backend/tests/test_*.js

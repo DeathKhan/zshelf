@@ -40,8 +40,7 @@ Item {
         width: parent.width
         height: Math.max(Theme.minTouchSize, 60)
         font.family: Theme.fontFamily
-        font.styleName: "Light"
-        Accessible.role: Accessible.ComboBox
+        font.pixelSize: Theme.fontSizeBody
 
         background: Rectangle {
             border.width: Theme.borderWidth
@@ -50,7 +49,9 @@ Item {
             radius: Theme.radiusCard
         }
         contentItem: Label {
-            text: parent.currentText
+            text: combo.currentText
+            font: combo.font
+            elide: Text.ElideRight
             anchors {
                 left: parent.left
                 leftMargin: 15
@@ -62,33 +63,30 @@ Item {
         }
 
         delegate: ItemDelegate {
-            width: root.width - 25
+            width: combo.popup.width - 20
             height: Math.max(Theme.minTouchSize, 60)
             contentItem: Text {
                 text: modelData
                 color: Theme.colorText
                 font.family: Theme.fontFamily
-                font.styleName: "Light"
+                font.pixelSize: Theme.fontSizeBody
                 font.bold: combo.highlightedIndex === index
+                elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }
         }
 
         popup: Popup {
-            readonly property int columns: combo.model.length > 12 ? 2 : 1
             y: combo.height + Theme.marginSmall
-            width: root.width * columns
-            implicitHeight: Math.min(contentItem.contentHeight + 20, 800)
+            width: root.width
+            implicitHeight: Math.min(contentItem.contentHeight + 20, 600)
             clip: true
-
-            contentItem: GridView {
-                id: grid
-                flow: GridView.FlowLeftToRight
+            contentItem: ListView {
+                implicitHeight: contentHeight
                 model: combo.popup.visible ? combo.delegateModel : null
                 currentIndex: combo.highlightedIndex
-                cellWidth: root.width - 15
-                cellHeight: combo.height
-
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             }
 
@@ -99,6 +97,6 @@ Item {
             }
         }
 
-        onActivated: parent.activated(index);
+        onActivated: function(index) { root.activated(index) }
     }
 }

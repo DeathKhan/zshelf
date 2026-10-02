@@ -2,77 +2,100 @@
 #define GRAYIMAGE_H
 
 #include <QQuickImageProvider>
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QPainter>
-#include <QPainterPath>
+#include <QLocalSocket>
+#include <QUrl>
+#include <QFile>
+#include <QImage>
+#include <QtConcurrent>
+#include <QCryptographicHash>
+#include <QDir>
+
+static QString getCoverCachePath(const QString &url)
+{
+    const QString cacheDir = QStringLiteral("/tmp/zshelf_covers");
+    QDir().mkpath(cacheDir);
+    const QByteArray hash = QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Md5).toHex();
+    return cacheDir + QStringLiteral("/") + QString::fromLatin1(hash) + QStringLiteral(".png");
+}
+
+// Covers are fetched by the Node backend (one shared clearance session).
+// The fetch runs off the GUI thread so the book grid can show titles first.
+static QImage loadGrayImage(const QString &id, const QSize &requestedSize)
+{
+    QString url = QUrl::fromPercentEncoding(id.toUtf8());
+    if (url.startsWith(QLatin1String("//")))
+        url = QLatin1String("https:") + url;
+
+    QString cacheFile;
+    if (url.startsWith(QLatin1String("http://")) || url.startsWith(QLatin1String("https://"))) {
+        cacheFile = getCoverCachePath(url);
+        if (QFile::exists(cacheFile)) {
+            QImage cached(cacheFile);
+            if (!cached.isNull()) {
+                if (requestedSize.width() > 0 && requestedSize.height() > 0 &&
+                    (cached.width() > requestedSize.width() || cached.height() > requestedSize.height())) {
+                    cached = cached.scaled(requestedSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                }
+                return cached;
+            }
+        }
+    }
+
+    QImage img;
+    if (url.startsWith(QLatin1String("file:"))) {
+        img = QImage(QUrl(url).toLocalFile());
+    } else if (url.startsWith(QLatin1String("http://")) || url.startsWith(QLatin1String("https://"))) {
+        QLocalSocket sock;
+        sock.connectToServer(QStringLiteral("/tmp/zshelf_socket"), QIODevice::ReadWrite);
+        if (sock.waitForConnected(3000)) {
+            const QByteArray payload = QByteArray("IMG\n") + url.toUtf8() + QByteArray("\n");
+            sock.write(payload);
+            if (sock.waitForBytesWritten(3000)) {
+                QByteArray line;
+                while (!line.contains('\n')) {
+                    if (!sock.waitForReadyRead(20000))
+                        break;
+                    line += sock.readAll();
+                    if (line.size() > 8 * 1024 * 1024)
+                        break;
+                }
+                if (line.startsWith("IMG:"))
+                    img = QImage::fromData(QByteArray::fromBase64(line.mid(4).trimmed()));
+            }
+            sock.close();
+        }
+    }
+    if (img.isNull())
+        return img;
+    img = img.convertToFormat(QImage::Format_Grayscale8);
+    if (!cacheFile.isEmpty()) {
+        img.save(cacheFile, "PNG");
+    }
+    if (requestedSize.width() > 0 && requestedSize.height() > 0)
+        img = img.scaled(requestedSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return img;
+}
 
 class AsyncImageResponse : public QQuickImageResponse
 {
 public:
     AsyncImageResponse(const QString &id, const QSize &requestedSize)
-        : m_id(id), m_requestedSize(requestedSize)
     {
-        connect(&netManager, &QNetworkAccessManager::finished, this, [this](QNetworkReply *rep) {
-            rep->deleteLater();
-            if (rep->error() != QNetworkReply::NoError)
-            {
-                qDebug() << "[NET] ERR: " << rep->errorString();
-                emit finished();
-                return;
-            }
-
-            QByteArray bytes = rep->readAll();
-            QImage img = QImage::fromData(bytes).convertToFormat(QImage::Format_Grayscale8);
-            if (img.isNull()) {
-                emit finished();
-                return;
-            }
-            QSize targetSize = img.size();
-            if (m_requestedSize.width() > 0 && m_requestedSize.height() > 0)
-                targetSize = m_requestedSize;
-
-            if (img.size() != targetSize) {
-                qreal scale = qMax(qreal(targetSize.width()) / img.width(), qreal(targetSize.height()) / img.height());
-                QSize scaledSize(qRound(img.width() * scale), qRound(img.height() * scale));
-                img = img.scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-            }
-
-            _img = QImage(targetSize, QImage::Format_ARGB32);
-            _img.fill(Qt::transparent);
-            QPainter p(&_img);
-            p.setRenderHint(QPainter::SmoothPixmapTransform);
-            qreal radius = 8.0;
-            if (targetSize.width() > 200) {
-                p.setRenderHint(QPainter::Antialiasing, true);
-                radius = 16.0;
-            }
-            QRectF targetRect(1, 1, targetSize.width() - 2, targetSize.height() - 2);
-            QPainterPath clipPath;
-            clipPath.addRoundedRect(targetRect, radius, radius);
-            p.setClipPath(clipPath);
-            int x = (targetSize.width() - img.width()) / 2;
-            int y = (targetSize.height() - img.height()) / 2;
-            p.drawImage(x, y, img);
-            p.end();
-
+        connect(&m_watcher, &QFutureWatcher<QImage>::finished, this, [this]() {
+            _img = m_watcher.result();
             emit finished();
         });
-
-        netManager.get(QNetworkRequest(m_id));
+        m_watcher.setFuture(QtConcurrent::run(loadGrayImage, id, requestedSize));
     }
 
-    QQuickTextureFactory *textureFactory() const
+    QQuickTextureFactory *textureFactory() const override
     {
         return QQuickTextureFactory::textureFactoryForImage(_img);
     }
 
 private:
     QImage _img;
-    QString m_id;
-    QSize m_requestedSize;
-    QNetworkAccessManager netManager;
+    QFutureWatcher<QImage> m_watcher;
 };
 
 class GrayImageProvider : public QQuickAsyncImageProvider
@@ -82,8 +105,7 @@ public:
 
     QQuickImageResponse *requestImageResponse(const QString &id, const QSize &requestedSize) override
     {
-        AsyncImageResponse *response = new AsyncImageResponse(id, requestedSize);
-        return response;
+        return new AsyncImageResponse(id, requestedSize);
     }
 };
 

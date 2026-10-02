@@ -1,66 +1,47 @@
 const fs = require("fs");
 const path = require("path");
-const fetch = require("node-fetch");
 const common = require("./common");
 
 function configFile() {
-    return path.join(__dirname, "..", "config.json");
+    return common.configFile();
 }
 
-function absorb(jar, response) {
-    let lines = [];
-    if (typeof response.headers.raw === "function") {
-        lines = response.headers.raw()["set-cookie"] || [];
-    } else {
-        const one = response.headers.get("set-cookie");
-        if (one) lines = [one];
-    }
-    for (const line of lines) {
-        const pair = String(line).split(";")[0];
-        const eq = pair.indexOf("=");
-        if (eq <= 0) continue;
-        jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
-    }
+function hasSession() {
+    return common.jar.has("remix_userid") && common.jar.has("remix_userkey");
 }
 
-function header(jar) {
-    return Array.from(jar.entries()).map(([k, v]) => k + "=" + v).join("; ");
-}
-
-function hasSession(jar) {
-    return jar.has("remix_userid") && jar.has("remix_userkey");
-}
-
-function sessionCookie(jar) {
+function sessionCookie() {
     return ["remix_userid", "remix_userkey"]
-        .filter((name) => jar.has(name))
-        .map((name) => name + "=" + jar.get(name))
+        .filter((name) => common.jar.has(name))
+        .map((name) => name + "=" + common.jar.get(name))
         .join("; ");
 }
 
-async function request(jar, url, options) {
-    const headers = Object.assign({
-        "User-Agent": common.fetchOptions.headers["User-Agent"],
-        "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
-        "Cookie": header(jar),
-    }, options.headers || {});
-    const res = await fetch(url, {
+async function request(url, options) {
+    const res = await common.fetchWithRetry(url, {
         method: options.method || "GET",
         redirect: "manual",
-        headers,
+        headers: Object.assign({
+            "User-Agent": common.browserUA,
+            "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
+        }, options.headers || {}),
         body: options.body,
     });
-    absorb(jar, res);
+    // Drain so a challenge replay or HTML page cannot stall the socket.
+    if (typeof res.text === "function") {
+        try { await res.text(); } catch (e) { /* body already consumed */ }
+    }
     return res;
 }
 
-function saveSession(jar) {
+function saveSession() {
     const file = configFile();
     const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
     cfg.domain = common.domain;
-    cfg.cookie = sessionCookie(jar);
+    // Password is never written. Only the two session cookies are stored.
+    cfg.cookie = sessionCookie();
     fs.writeFileSync(file, JSON.stringify(cfg, null, 4) + "\n");
-    common.fetchOptions.headers.Cookie = cfg.cookie;
+    common.fetchOptions.headers.Cookie = common.cookieHeader();
 }
 
 module.exports = async function login(email, password, socket) {
@@ -72,17 +53,18 @@ module.exports = async function login(email, password, socket) {
         fail("Email and password are required");
         return;
     }
-    const jar = new Map();
+    common.jar.delete("remix_userid");
+    common.jar.delete("remix_userkey");
     const origin = String(common.domain).replace(/\/$/, "");
     try {
-        await request(jar, origin + "/", { method: "GET" });
+        await request(origin + "/", { method: "GET" });
         const creds = new URLSearchParams({ email: email, password: password }).toString();
-        let res = await request(jar, origin + "/eapi/user/login", {
+        let res = await request(origin + "/eapi/user/login", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: creds,
         });
-        if (!hasSession(jar)) {
+        if (!hasSession()) {
             const classic = new URLSearchParams({
                 email: email,
                 password: password,
@@ -90,7 +72,7 @@ module.exports = async function login(email, password, socket) {
                 site_mode: "books",
                 redirect: "1",
             }).toString();
-            res = await request(jar, origin + "/login", {
+            res = await request(origin + "/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",
@@ -99,18 +81,19 @@ module.exports = async function login(email, password, socket) {
                 body: classic,
             });
         }
-        if (!hasSession(jar) && res.status >= 300 && res.status < 400) {
+        if (!hasSession() && res.status >= 300 && res.status < 400) {
             const loc = res.headers.get("location");
             if (loc) {
                 const next = loc.startsWith("http") ? loc : origin + (loc.startsWith("/") ? loc : "/" + loc);
-                await request(jar, next, { method: "GET" });
+                await request(next, { method: "GET" });
             }
         }
-        if (!hasSession(jar)) {
+        if (!hasSession()) {
             fail("Sign-in failed");
             return;
         }
-        saveSession(jar);
+        saveSession();
+        require("./detail-cache").clear();
         socket.write("OK\n");
         socket.end();
     } catch (err) {

@@ -4,8 +4,10 @@ import QtQuick.Layouts 1.11
 import "Theme.js" as Theme
 
 Popup {
-    property var model;
-    property bool isBusy;
+    property var model: null
+    readonly property bool isBusy: model ? model.detailBusy : false
+    readonly property string detailError: model ? model.detailError : ""
+    objectName: "bookPopup"
 
     id: bookPopup
 
@@ -13,7 +15,8 @@ Popup {
     height: parent ? Math.min(parent.height * 0.9, 1300) : 1300
     x: parent ? (parent.width - width) / 2 : 0
     y: parent ? (parent.height - height) / 2 : 0
-    closePolicy: Popup.CloseOnPressOutside
+    modal: true
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     dim: true
     padding: Theme.popupPadding
 
@@ -30,7 +33,29 @@ Popup {
         radius: Theme.radiusCard + 2
     }
 
-    onOpened: bar.currentIndex = 0;
+    function showBook(selectedBook) {
+        if (!selectedBook) return
+        // Identity is the book URL, not the title. Several results share a title.
+        var url = selectedBook.url ? String(selectedBook.url) : ""
+        var match = selectedBook
+        var list = (typeof store !== "undefined" && store && store.books) ? store.books : []
+        if (url.length) {
+            for (var i = 0; i < list.length; i++) {
+                var candidate = list[i]
+                if (candidate && String(candidate.url) === url) {
+                    match = candidate
+                    break
+                }
+            }
+        }
+        model = match
+        match.getDetail()
+        open()
+    }
+
+    onOpened: { bar.currentIndex = 0; descriptionView.contentY = 0; if (typeof panel !== "undefined") panel.flash() }
+    onClosed: if (typeof panel !== "undefined") panel.flash()
+    onModelChanged: { bar.currentIndex = 0; descriptionView.contentY = 0 }
 
     contentChildren: [
         Image {
@@ -38,13 +63,14 @@ Popup {
             fillMode: Image.PreserveAspectFit
             smooth: true
             source: model ? model.imgFile : ""
-            width: 400
-            height: 400 * 1.5
+            width: Math.min(320, parent.width * 0.4)
+            height: Math.min(420, parent.height * 0.36)
             sourceSize: Qt.size(400, 600)
+            onStatusChanged: if (status === Image.Ready && typeof panel !== "undefined") { panel.markGray(); panel.bump() }
             anchors.horizontalCenter: parent.horizontalCenter
-            y: -(parent.height / 2 - height / 2)
+            anchors.top: parent.top
             ProgressBar {
-                visible: parent.progress < 1.0
+                visible: parent.status === Image.Loading
                 value: parent.progress
                 anchors {
                     horizontalCenter: parent.horizontalCenter
@@ -65,6 +91,8 @@ Popup {
             font.bold: true
             font.pixelSize: Theme.fontSizeTitle
             wrapMode: Text.Wrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
         },
         Text {
@@ -78,10 +106,13 @@ Popup {
             font.family: Theme.fontFamilyContent
             font.pixelSize: Theme.fontSizeBody + 10
             wrapMode: Text.Wrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
         },
         TabBar {
             id: bar
+            objectName: "detailTabs"
             visible: !isBusy
             anchors {
                 left: parent.left; right: parent.right
@@ -110,16 +141,19 @@ Popup {
         },
         StackLayout {
             id: stack
+            visible: !bookPopup.isBusy && !bookPopup.detailError.length
             anchors {
                 left: parent.left; right: parent.right
                 top: bar.bottom
                 topMargin: 30
-                bottom: parent.bottom
-                bottomMargin: 30
+                bottom: download.top
+                bottomMargin: 20
             }
             currentIndex: bar.currentIndex
             Item {
                 Flickable {
+                    id: descriptionView
+                    objectName: "bookDescription"
                     anchors.fill: parent
                     contentHeight: bookDesc.height
                     clip: true
@@ -142,8 +176,8 @@ Popup {
                     id: recGrid
                     anchors.fill: parent
                     boundsBehavior: Flickable.StopAtBounds
-                    cellHeight: stack.height / 2
-                    cellWidth: cellHeight / 1.5
+                    cellHeight: height
+                    cellWidth: width / 3
                     model: bookPopup.model ? bookPopup.model.similars : []
                     flickableDirection: Flickable.HorizontalFlick
                     flow: GridView.TopToBottom
@@ -155,39 +189,68 @@ Popup {
                         height: recGrid.cellHeight
                         book: model.modelData
                         showDownloadStatus: false
-                        onClicked: {
-                            model.modelData.getDetail(bookPopup);
-                            bar.currentIndex = 0;
-                            bookPopup.model = model.modelData;
-                        }
+                        onClicked: bookPopup.showBook(tappedBook)
                     }
                 }
             }
         },
-        Image {
-            z: 1
-            source: "png/loading"
-            visible: isBusy
-            width: 60
-            height: 60
-            anchors.centerIn: parent
+        ColumnLayout {
+            anchors.centerIn: stack
+            width: stack.width
+            visible: bookPopup.isBusy || bookPopup.detailError.length > 0
+            spacing: 24
+            Text {
+                Layout.fillWidth: true
+                text: bookPopup.isBusy ? "Loading book details…" : bookPopup.detailError
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeBody
+            }
+            FlatButton {
+                objectName: "retryDetails"
+                Layout.alignment: Qt.AlignHCenter
+                text: "Retry"
+                visible: !bookPopup.isBusy
+                onTapped: bookPopup.model.getDetail()
+            }
         }
     ]
 
     FlatButton {
+        objectName: "closeDetails"
+        text: "Close"
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        onTapped: bookPopup.close()
+    }
+
+    Text {
+        anchors.left: parent.left; anchors.right: parent.right
+        anchors.bottom: download.top; anchors.bottomMargin: 12
+        text: model ? model.downloadError : ""
+        visible: text.length > 0
+        wrapMode: Text.Wrap
+        font.pixelSize: Theme.fontSizeSmall
+    }
+    FlatButton {
         id: download
+        objectName: "downloadBook"
+        enabled: !store.downloadLimitReached && model && model.dlUrl && (model.status === "Download" || model.status === "Retry") && !bookPopup.detailError.length
         visible: !isBusy
         width: 300
         height: Math.max(Theme.minTouchSize, 80)
-        x: parent.width - 220
-        y: parent.height - 5
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
         bgColor: Theme.colorPrimary
         fgColor: Theme.colorTextInverse
-        text: !model || !model.dlUrl ? "Unavailable" : model.status
+        text: !model || !model.dlUrl ? "Unavailable" : store.downloadLimitReached && (model.status === "Download" || model.status === "Retry") ? "Daily limit reached" : model.status
+        onTextChanged: if (typeof panel !== "undefined") panel.bump()
         onTapped: {
-            if(!model || !model.dlUrl || model.status !== "Download") {
+            if(!model || !model.dlUrl || (model.status !== "Download" && model.status !== "Retry")) {
                 return
             }
+            if (typeof panel !== "undefined") panel.bump()
             store.download(model);
         }
     }

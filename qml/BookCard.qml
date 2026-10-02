@@ -4,16 +4,17 @@ import "Theme.js" as Theme
 
 Item {
     id: root
+    objectName: "bookCard"
     property var book
+    property var pressedBook: null
     property bool showDownloadStatus: true
     property real cardMargin: 10
     /// Explicit content width so image is correct before delegate width is applied (fixes tiny thumbnails on first paint)
     property real contentWidth: -1
     readonly property real effectiveWidth: contentWidth > 0 ? contentWidth : root.width
-    signal clicked
+    // tappedBook is the book under the press, identified later by URL.
+    signal clicked(var tappedBook)
 
-    Accessible.role: Accessible.ListItem
-    Accessible.name: book ? (book.name + " by " + book.author) : ""
 
 
     Rectangle {
@@ -28,12 +29,30 @@ Item {
         font.family: Theme.fontFamilyContent
         font.pixelSize: Theme.fontSizeBody
         width: Math.max(0, root.effectiveWidth - root.cardMargin * 2)
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 50
+        anchors.bottom: fileInfo.top
+        anchors.bottomMargin: 0
         anchors.horizontalCenter: parent.horizontalCenter
         horizontalAlignment: Text.AlignHCenter
+        height: 36
+        elide: Text.ElideRight
         maximumLineCount: 1
         wrapMode: Text.Wrap
+    }
+
+    Text {
+        id: fileInfo
+        text: root.book && root.book.fileSize ? (root.book.fileExt.toUpperCase() + " • " + root.book.fileSize) : ""
+        font.family: Theme.fontFamilyContent
+        font.pixelSize: Theme.fontSizeBody - 4
+        color: Theme.colorMuted || "#666666"
+        width: Math.max(0, root.effectiveWidth - root.cardMargin * 2)
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 5
+        anchors.horizontalCenter: parent.horizontalCenter
+        horizontalAlignment: Text.AlignHCenter
+        height: 20
+        elide: Text.ElideRight
+        maximumLineCount: 1
     }
 
     Text {
@@ -47,44 +66,38 @@ Item {
         anchors.bottom: author.top
         anchors.bottomMargin: 5
         horizontalAlignment: Text.AlignHCenter
+        height: 72
+        elide: Text.ElideRight
         maximumLineCount: 2
         wrapMode: Text.Wrap
     }
 
-    Loader {
-        id: imageLoader
-        active: root.width > 100
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: -60
-        width: active ? (Math.max(Theme.minTouchSize * 2, root.effectiveWidth - root.cardMargin * 2)) : 0
-        height: active ? (width * 1.5) : 0
-        sourceComponent: Component {
-            Image {
-                id: image
-                fillMode: Image.PreserveAspectCrop
-                width: imageLoader.width
-                height: imageLoader.height
-                sourceSize: Qt.size(width, height)
-                source: root.book && root.book.imgFile ? root.book.imgFile : "png/book"
-                Image {
-                    visible: image.status === Image.Error
-                    source: "png/book"
-                    width: 52
-                    height: 52
-                    anchors.centerIn: parent
-                }
+    Image {
+        id: cover
+        visible: !!root.book
+        anchors { top: parent.top; bottom: name.top; horizontalCenter: parent.horizontalCenter; topMargin: 12; bottomMargin: 16 }
+        width: Math.max(0, root.effectiveWidth - root.cardMargin * 2 - 20)
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        sourceSize: Qt.size(Math.round(width), Math.round(height))
+        source: root.book && root.book.imgFile ? root.book.imgFile : ""
+        onStatusChanged: if (status === Image.Ready && typeof panel !== "undefined") { panel.markGray(); panel.bump() }
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width, parent.height / 1.5)
+            height: parent.height
+            color: "#f4f4f4"
+            border.color: "#aaaaaa"
+            border.width: 1
+            visible: cover.status === Image.Error || cover.status === Image.Null
+            Text {
+                anchors.centerIn: parent
+                text: "No cover"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.colorMuted
             }
         }
-    }
-    Image {
-        id: placeholderImage
-        visible: !imageLoader.active
-        fillMode: Image.PreserveAspectFit
-        width: Math.max(Theme.minTouchSize * 2, root.effectiveWidth - root.cardMargin * 2)
-        height: width * 1.5
-        source: "png/book"
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: -60
     }
 
     Rectangle {
@@ -110,23 +123,27 @@ Item {
         }
     }
 
+    Rectangle {
+        objectName: "checkingSlot"
+        visible: !root.book
+        anchors.fill: parent
+        anchors.margins: 14
+        color: Theme.colorSurface
+        border.color: "#dddddd"
+        Text {
+            anchors.centerIn: parent
+            text: "Checking…"
+            color: Theme.colorMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSizeBody
+        }
+    }
+
     MouseArea {
         anchors.fill: root
-        onPressed: {
-            background.color = Theme.colorPrimary
-            name.color = Theme.colorTextInverse
-            author.color = Theme.colorTextInverse
-        }
-        onReleased: {
-            background.color = Theme.colorSurface
-            name.color = Theme.colorText
-            author.color = Theme.colorText
-        }
-        onCanceled: {
-            background.color = Theme.colorSurface
-            name.color = Theme.colorText
-            author.color = Theme.colorText
-        }
-        onClicked: root.clicked()
+        enabled: root.book !== null && root.book !== undefined
+        onPressed: root.pressedBook = root.book
+        onCanceled: root.pressedBook = null
+        onClicked: { if (root.pressedBook && root.pressedBook === root.book) root.clicked(root.pressedBook); root.pressedBook = null }
     }
 }

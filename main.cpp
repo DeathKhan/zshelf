@@ -1,37 +1,45 @@
 #include <QtQuick>
-#include <QtGui>
 #include <QFont>
 #include <QFontDatabase>
 #include <QDebug>
 #include <QtPlugin>
 #include "store.h"
-#include "quickvirtualkeyboard/register.h"
 #include "grayImage.h"
+#include "qtfbclient.h"
 
-Q_IMPORT_PLUGIN(QsgEpaperPlugin)
+Q_IMPORT_PLUGIN(QtfbIntegrationPlugin)
 
 int main(int argc, char *argv[])
 {
-    qputenv("QMLSCENE_DEVICE", "epaper");
-    qputenv("QT_QPA_PLATFORM", "epaper:enable_fonts");
-    qputenv("QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS", "rotate=180");
+    // Native qtfb client. Do not select the epaper QPA or libqsgepaper:
+    // those lock SWTCON /dev/fb0 while xochitl already owns the panel.
+    // The qtfb platform plugin only provides a 1404x1872 raster window.
+    qunsetenv("QMLSCENE_DEVICE");
+    qunsetenv("QT_QUICK_BACKEND");
+    qputenv("QT_QPA_PLATFORM", "qtfb");
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 
     QGuiApplication app(argc, argv);
+    app.styleHints()->setCursorFlashTime(0);
+    qWarning("zshelf qpa: %s", qPrintable(app.platformName()));
+
+    QtfbClient qtfb;
+    const bool qtfbOpen = qtfb.openClient();
 
     Store view;
-    qmlRegisterType<Store>();
+    qmlRegisterAnonymousType<Store>("zshelf", 1);
+    qtfb.setWindow(&view);
 
     auto context = view.rootContext();
-    context->setContextProperty("screenGeometry", app.primaryScreen()->geometry());
+    const QRect panel(0, 0, qtfbwire::RM2_WIDTH, qtfbwire::RM2_HEIGHT);
+    context->setContextProperty("screenGeometry", panel);
+    view.resize(panel.size());
     context->setContextProperty("store", &view);
     context->setContextProperty("storeProg", QVariant(0));
     context->setContextProperty("storeError", QVariant(""));
     context->setContextProperty("titleVisible", QVariant(true));
+    context->setContextProperty("panel", &qtfb);
 
-    // Noto Sans: Latin (including Latin Extended) and Cyrillic.
-    // Noto Sans CJK SC: Han, kana, and Hangul. Same style names (Regular,
-    // Medium, Bold, Light) so a bold/medium request can fall through.
-    // Qt does not merge cmaps across families; insertSubstitution does.
     const char *fontResources[] = {
         ":/fonts/NotoSans-Regular",
         ":/fonts/NotoSans-Medium",
@@ -55,11 +63,16 @@ int main(int argc, char *argv[])
 
     view.engine()->addImportPath(QStringLiteral(DEPLOYMENT_PATH));
     view.engine()->addImageProvider(QLatin1String("gray"), new GrayImageProvider);
-    registerQmlTypes();
     view.setSource(QUrl(QStringLiteral("qrc:/Main.qml")));
 
     QObject::connect(view.engine(), &QQmlEngine::quit, &QGuiApplication::quit);
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&view]() { delete &view; });
+    if (qtfbOpen) {
+        QObject::connect(&view, &QQuickWindow::frameSwapped, &qtfb, [&qtfb]() {
+            qtfb.schedulePresent();
+        });
+    } else {
+        qWarning("zshelf qtfb: not connected; window will not be pushed");
+    }
 
     view.show();
     view.open();

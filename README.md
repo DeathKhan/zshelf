@@ -1,23 +1,29 @@
-# zshelf (recovered Qt tree)
+# zshelf
 
-Modified Qt zshelf for a reMarkable 2 on firmware 3.3.x (armv7l, kernel 5.4.70, Toltec/rm2fb). Z-Library calls target z-lib.fm. This is not the Rust rewrite.
+Qt 6 qtfb client for a reMarkable 2. The binary talks to the panel itself (`QT_QPA_PLATFORM=qtfb`, see `qtfbclient.cpp` and `scripts/zshelf-qtfb.sh`). It does not use the old Qt 5 `libqsgepaper` shim, and it does not preload `qtfb-shim.so`.
 
-## Build (one command)
+`scripts/docker-build.sh` and `scripts/build-for-device-and-deploy.sh` still build the old way: Toltec `ghcr.io/toltec-dev/qt:v3.3` (Qt 5.15.1). Do not use those for this tree. `build-for-device-and-deploy.sh` also copies files onto a tablet.
 
-From this directory, on a machine with Docker (OrbStack or Docker Desktop). The SDK image is linux/amd64; Apple Silicon runs it under emulation.
+## This build directory
 
-```bash
-./scripts/docker-build.sh
-```
+`build-qt6/` is local and gitignored. Its generated Makefile records how that tree was configured:
 
-That builds a local image `zshelf-rm2-qt` from `ghcr.io/toltec-dev/qt:v3.3` (Qt 5.15.1 + libqsgepaper) and compiles `./zshelf`. Do not use `ghcr.io/toltec-dev/qt:latest` or `:v4.0` for this firmware; those are Qt 6.
+- qmake 3.1, Qt 6.10.3
+- `qmake -o Makefile ../zshelf.pro` from `/src/.sdk/rm2/sysroots/aarch64-codexsdk-linux/usr/bin/qmake`
+- `arm-remarkable-linux-gnueabi-g++` with sysroot `.sdk/rm2/sysroots/cortexa7hf-neon-remarkable-linux-gnueabi`
 
-The image does not deploy anything. `scripts/build-for-device-and-deploy.sh` still copies files to a tablet; do not run it unless you mean to.
+No script in this repo creates `.sdk` or runs that qmake. `.sdk/` is gitignored. Where that SDK came from is not written down here.
 
-The Node backend under `backend/` is plain JavaScript (cheerio, node-fetch, uuid). It is not cross-compiled. The tablet's own node runs it.
+## Run on device
+
+`scripts/zshelf-qtfb.sh` unsets `QMLSCENE_DEVICE`, strips a `qtfb-shim.so` preload if one is set, and starts `./zshelf` with `QT_QPA_PLATFORM=qtfb`. The binary is not in git.
+
+## Sign-in
+
+Copy `config.example.json` to `config.json`. The password is not stored. After sign-in, the session cookie is written only to the local `config.json`, which is gitignored.
+
+Z-Library calls use the host in that file. The Node backend under `backend/` is plain JavaScript (cheerio, node-fetch, uuid). It is not cross-compiled.
 
 ## Fonts
 
-UI and book text use **Noto Sans** (Latin including Latin Extended, Cyrillic, Greek). Missing glyphs fall through to **Noto Sans CJK SC** (Han, hiragana/katakana, Hangul) via `QFont::insertSubstitution`. Weights shipped: Regular, Medium, Bold, Light. Both families are SIL OFL; see `fonts/OFL-NotoSans.txt` and `fonts/LICENSE-NotoSansCJKsc.txt`. Maison Neue is not included.
-
-Default site host is https://z-lib.sk (r/zlibrary access wiki, September 2026). Sign in from the on-device screen; the password is not stored, only the session cookie in config.json.
+UI text uses Noto Sans, with Noto Sans CJK SC as a fallback for Han, kana, and Hangul (`QFont::insertSubstitution`). Weights shipped: Regular, Medium, Bold, Light. Both families are SIL OFL. See `fonts/OFL-NotoSans.txt` and `fonts/LICENSE-NotoSansCJKsc.txt`.
