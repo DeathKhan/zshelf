@@ -2,10 +2,12 @@
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jamesfo)
 
-A Z-Library client for the reMarkable 2. Search from the tablet, open a book, and download it into your books folder. Read it in KOReader.
+Browse Z-Library on a reMarkable 2 and download the book onto the tablet.
 
-Sign in with the Sign in button. The password is not saved. The session is written to `config.json` on the device, and that file stays out of git. Copy `config.example.json` to `config.json` once before the first run. That copy is the site address and the download folder, not a login.
+Sign in with your Z-Library account from the Sign in screen. The password is not saved.
 
-`scripts/zshelf-qtfb.sh` starts it on the panel. The binary is not in this repository.
+Copy `config.example.json` to `config.json` before the first run. Put the site address and the books folder there.
 
-Noto Sans and Noto Sans CJK SC are included under the SIL Open Font License.
+`scripts/zshelf-qtfb.sh` starts zshelf on the panel.
+
+Noto Sans and Noto Sans CJK SC are included. Both are SIL Open Font License.
