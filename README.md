@@ -1,6 +1,6 @@
 # zshelf
 
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jamesfo)
+<p align="center"><a href="https://ko-fi.com/jamesfo"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a></p>
 
 Browse Z-Library on a reMarkable 2 and download the book onto the tablet.
 
