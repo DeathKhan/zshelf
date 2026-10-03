@@ -7,6 +7,14 @@ function configFile() {
     return process.env.ZSHELF_CONFIG || path.join(__dirname, "..", "config.json");
 }
 
+function ensureConfig() {
+    const file = configFile();
+    if (fs.existsSync(file)) return;
+    const example = path.join(__dirname, "..", "config.example.json");
+    fs.copyFileSync(example, file);
+}
+
+ensureConfig();
 let config = JSON.parse(fs.readFileSync(configFile(), "utf8"));
 
 function currentConfig() {
