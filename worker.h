@@ -67,8 +67,20 @@ public:
         while (!isInterruptionRequested())
         {
             if (!sock.canReadLine()) {
-                if (sock.state() != QLocalSocket::ConnectedState || idle.elapsed() > 30000) break;
-                sock.waitForReadyRead(100);
+                const bool open = sock.state() == QLocalSocket::ConnectedState;
+                if (!open) {
+                    // DONE and a short peer close often arrive together. Read
+                    // the last lines before calling a finished file a failure.
+                    const qint64 pending = sock.bytesAvailable();
+                    if (!sock.waitForReadyRead(300) && pending == 0)
+                        break;
+                    if (!sock.canReadLine())
+                        break;
+                } else if (idle.elapsed() > 30000) {
+                    break;
+                } else {
+                    sock.waitForReadyRead(200);
+                }
                 continue;
             }
             idle.restart();

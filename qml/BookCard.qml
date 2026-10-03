@@ -102,16 +102,19 @@ Item {
 
     Rectangle {
         id: downloadStatus
-        visible: root.showDownloadStatus && root.book && (root.book.status === "Downloaded" || (typeof root.book.status === "string" && root.book.status.endsWith("%")))
+        // Live percents stay on the download button. A black badge here plus
+        // that button is two far-apart damages, and damageFrom merges them
+        // into one full-panel update.
+        visible: root.showDownloadStatus && root.book && root.book.status === "Downloaded"
         anchors.top: parent.top
         anchors.right: parent.right
-        width: Math.max(Theme.minTouchSize, downloadStatusText.contentWidth + 20)
+        width: Theme.minTouchSize
         height: Theme.minTouchSize
         color: Theme.colorPrimary
 
         Text {
             id: downloadStatusText
-            text: root.book && root.book.status === "Downloaded" ? "↓" : (root.book ? root.book.status : "")
+            text: "↓"
             color: Theme.colorTextInverse
             anchors.centerIn: parent
             anchors.verticalCenterOffset: 2

@@ -103,8 +103,16 @@ Popup {
                 }
                 Text {
                     id: downloadStatusText
+                    width: 120
+                    height: 36
                     visible: model.modelData.status.length > 0
-                    text: model.modelData.status === "Downloaded" ? "↓  " : model.modelData.status
+                    text: {
+                        var s = model.modelData.status
+                        if (s === "Downloaded") return "↓"
+                        if (s.indexOf("Downloading ") === 0 && s.charAt(s.length - 1) === "%")
+                            return s.slice(12)
+                        return s
+                    }
                     color: Theme.colorText
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -113,6 +121,7 @@ Popup {
                     font.family: Theme.fontFamily
                     font.styleName: "Bold"
                     font.pixelSize: 22
+                    onTextChanged: if (text.length && typeof panel !== "undefined") panel.bump()
                 }
                 Rectangle {
                     color: Theme.colorMuted

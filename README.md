@@ -2,6 +2,9 @@
 
 Qt 6 qtfb client for a reMarkable 2. The binary talks to the panel itself (`QT_QPA_PLATFORM=qtfb`, see `qtfbclient.cpp` and `scripts/zshelf-qtfb.sh`). It does not use the old Qt 5 `libqsgepaper` shim, and it does not preload `qtfb-shim.so`.
 
+
+If this is useful, [Ko-fi](https://ko-fi.com/jamesfo).
+
 `scripts/docker-build.sh` and `scripts/build-for-device-and-deploy.sh` still build the old way: Toltec `ghcr.io/toltec-dev/qt:v3.3` (Qt 5.15.1). Do not use those for this tree. `build-for-device-and-deploy.sh` also copies files onto a tablet.
 
 ## This build directory

@@ -17,11 +17,14 @@ Popup {
     y: parent ? (parent.height - height) / 2 : 0
     modal: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    dim: true
     padding: Theme.popupPadding
-
+    // No full-window dim. A dim repaints 1404x1872, and damageFrom merges
+    // more than 16 rects into one bounding box, so the partial update covers
+    // the panel. bump() presents only the pixels that actually changed
+    // (UPDATE_PARTIAL). With no dim, that region is the popup.
+    dim: false
     Overlay.modeless: Rectangle {
-        color: "#90ffffff"
+        color: "transparent"
         MouseArea {
             anchors.fill: parent
         }
@@ -31,6 +34,26 @@ Popup {
         border.width: Theme.borderWidth
         border.color: Theme.colorPrimary
         radius: Theme.radiusCard + 2
+    }
+
+    // "Downloading 42%" must not be the grey button label. That button is an
+    // opacity layer while disabled, so each percent tick repainted the whole
+    // control and the panel flashed. Only the digits live in downloadPercent.
+    function downloadLabel(status) {
+        if (!model || !model.dlUrl)
+            return "Unavailable"
+        if (store.downloadLimitReached && (status === "Download" || status === "Retry"))
+            return "Daily limit reached"
+        if (status && status.indexOf("Downloading ") === 0)
+            return "Downloading"
+        return status || "Download"
+    }
+    function percentDigits(status) {
+        if (!status || status.indexOf("Downloading ") !== 0)
+            return ""
+        if (status.charAt(status.length - 1) !== "%")
+            return ""
+        return status.slice(12)
     }
 
     function showBook(selectedBook) {
@@ -53,8 +76,8 @@ Popup {
         open()
     }
 
-    onOpened: { bar.currentIndex = 0; descriptionView.contentY = 0; if (typeof panel !== "undefined") panel.flash() }
-    onClosed: if (typeof panel !== "undefined") panel.flash()
+    onOpened: { bar.currentIndex = 0; descriptionView.contentY = 0; if (typeof panel !== "undefined") panel.bump() }
+    onClosed: if (typeof panel !== "undefined") panel.bump()
     onModelChanged: { bar.currentIndex = 0; descriptionView.contentY = 0 }
 
     contentChildren: [
@@ -227,11 +250,30 @@ Popup {
 
     Text {
         anchors.left: parent.left; anchors.right: parent.right
-        anchors.bottom: download.top; anchors.bottomMargin: 12
+        anchors.bottom: downloadPercent.top; anchors.bottomMargin: 12
         text: model ? model.downloadError : ""
         visible: text.length > 0
         wrapMode: Text.Wrap
         font.pixelSize: Theme.fontSizeSmall
+    }
+    Text {
+        id: downloadPercent
+        objectName: "downloadPercent"
+        width: 140
+        height: text.length ? 36 : 0
+        visible: text.length > 0
+        anchors.horizontalCenter: download.horizontalCenter
+        anchors.bottom: download.top
+        anchors.bottomMargin: text.length ? 8 : 0
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        color: Theme.colorText
+        font.family: Theme.fontFamily
+        font.bold: true
+        font.pixelSize: Theme.fontSizeBody
+        text: percentDigits(model ? model.status : "")
+        // Digits only. bump presents the changed pixels (UPDATE_PARTIAL).
+        onTextChanged: if (text.length && typeof panel !== "undefined") panel.bump()
     }
     FlatButton {
         id: download
@@ -244,7 +286,7 @@ Popup {
         anchors.bottom: parent.bottom
         bgColor: Theme.colorPrimary
         fgColor: Theme.colorTextInverse
-        text: !model || !model.dlUrl ? "Unavailable" : store.downloadLimitReached && (model.status === "Download" || model.status === "Retry") ? "Daily limit reached" : model.status
+        text: downloadLabel(model ? model.status : "")
         onTextChanged: if (typeof panel !== "undefined") panel.bump()
         onTapped: {
             if(!model || !model.dlUrl || (model.status !== "Download" && model.status !== "Retry")) {

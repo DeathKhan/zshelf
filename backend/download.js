@@ -155,17 +155,27 @@ module.exports = function (args, socket) {
         console.log("download name", fileName, fileExt || "(type later)");
 
         const fileLength = parseInt(response.headers.get("content-length"), 10) || 0;
+        const encoding = String(response.headers.get("content-encoding") || "").toLowerCase();
+        // node-fetch compress:true decodes the body before we count it.
+        // Content-Length is the wire size, so it does not describe decoded bytes.
+        const wireLength = !/gzip|deflate|br/.test(encoding);
         const uuid = v4();
         const stage = stagingDir();
         fs.mkdirSync(stage, { recursive: true });
         const tempFilePath = pathJoin(stage, uuid);
-        console.log("download bytes", fileLength);
+        console.log("download bytes", fileLength, wireLength ? "wire" : "decoded");
 
         const { pipeline, Transform } = require("stream");
         let received = 0;
         let lastProgress = -1;
         let lastUpdate = 0;
-        const abort = () => response.body.destroy(new Error("Download cancelled"));
+        const bodyComplete = () => wireLength && fileLength > 0 && received === fileLength;
+        const abort = () => {
+            // The local socket closing after the last byte must not cancel a
+            // body that has already fully arrived.
+            if (bodyComplete() || !response.body) return;
+            response.body.destroy(new Error("Download cancelled"));
+        };
         if (socket.once) socket.once("close", abort);
         socket.write("STATE:Downloading\n");
         const progress = new Transform({
@@ -182,29 +192,40 @@ module.exports = function (args, socket) {
         });
         pipeline(response.body, progress, fs.createWriteStream(tempFilePath), async (error) => {
             let destinationTemp;
+            let beat;
             try {
-                if (error) throw error;
+                // A short close after the last byte is not a failed download.
+                if (error && !bodyComplete()) throw error;
                 if (!received) throw new Error("Empty file");
-                if (fileLength && received !== fileLength) throw new Error("Incomplete file; please retry");
+                if (wireLength && fileLength && received !== fileLength) throw new Error("Incomplete file; please retry");
                 if (/text\/html|application\/json/i.test(contentType || "")) throw new Error("Server returned a page instead of a book");
                 if (!knownExt(fileExt)) fileExt = sniffExt(tempFilePath);
                 if (!fileExt) throw new Error("Unrecognized book format");
-                socket.write("STATE:Saving…\n");
+                const writeLine = (line) => {
+                    try { socket.write(line); } catch (err) {}
+                };
+                writeLine("STATE:Saving…\n");
+                // Copying onto a nearly full disk can sit silent. A heartbeat
+                // keeps the client from treating that pause as a dropped download.
+                beat = setInterval(() => writeLine("STATE:Saving…\n"), 5000);
+                if (beat.unref) beat.unref();
                 const directory = common.additionalBookLocation || KOREADER_DIR;
                 await fs.promises.mkdir(directory, {recursive: true});
                 const destination = pathJoin(directory, fileName + fileExt);
                 destinationTemp = destination + "." + uuid + ".part";
                 await fs.promises.copyFile(tempFilePath, destinationTemp);
                 await fs.promises.rename(destinationTemp, destination);
-                socket.write("DONE:" + JSON.stringify(destination) + "\n");
-                socket.write("PROG:100\n");
+                destinationTemp = "";
+                writeLine("DONE:" + JSON.stringify(destination) + "\n");
+                writeLine("PROG:100\n");
             } catch (err) {
-                socket.write("ERR: " + publicErr(err) + "\n");
+                try { socket.write("ERR: " + publicErr(err) + "\n"); } catch (writeErr) {}
             } finally {
+                if (beat) clearInterval(beat);
                 if (socket.removeListener) socket.removeListener("close", abort);
                 await fs.promises.unlink(tempFilePath).catch(() => {});
                 if (destinationTemp) await fs.promises.unlink(destinationTemp).catch(() => {});
-                socket.end();
+                try { socket.end(); } catch (err) {}
             }
         });
     }).catch((err) => {
